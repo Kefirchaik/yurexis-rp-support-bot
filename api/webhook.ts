@@ -67,14 +67,18 @@ async function notifyStaff(ticket: Ticket, userInfo: string) {
 }
 
 bot.command("start", async ctx => {
-  if (ctx.chat.type !== "private") return;
+  if (ctx.chat.type !== "private" || !ctx.from) return;
   const staff = await isStaff(ctx.from.id);
   const greeting = `✨ <b>YUREXIS RP</b>\n<tg-spoiler>SUPPORT CENTER</tg-spoiler>\n━━━━━━━━━━━━━━━━━━\nДобро пожаловать в официальную техническую поддержку проекта!\n\n🎮 Поможем с вопросами по игре, аккаунту и работе проекта.\n📩 Создай обращение, опиши проблему и дождись ответа команды.\n\nВыбери действие в меню ниже 👇`;
   await ctx.reply(greeting, { parse_mode: "HTML", reply_markup: staff ? staffMenu() : menu() });
 });
 
-bot.command("id", async ctx => ctx.reply(`🪪 Твой Telegram ID: <code>${ctx.from.id}</code>`, { parse_mode: "HTML" }));
+bot.command("id", async ctx => {
+  if (!ctx.from) return;
+  await ctx.reply(`🪪 Твой Telegram ID: <code>${ctx.from.id}</code>`, { parse_mode: "HTML" });
+});
 bot.command("help", async ctx => {
+  if (!ctx.from) return;
   const staff = await isStaff(ctx.from.id);
   await ctx.reply(staff
     ? "🛠 <b>Панель персонала</b>\n\n/start — открыть меню\n/id — узнать Telegram ID\n/grant ID — выдать права (владелец)\n/revoke ID — снять права (владелец)\n\nДля ответа нажми «Ответить» в карточке заявки, затем отправляй сообщения. /stopreply завершает режим ответа."
@@ -169,7 +173,7 @@ bot.callbackQuery(/^staff:close:(\d+)$/, async ctx => {
 });
 
 bot.command("grant", async ctx => {
-  if (ctx.chat.type !== "private" || ctx.from.id !== ownerId) { await ctx.reply("🔐 Эта команда доступна только владельцу в личном чате с ботом."); return; }
+  if (ctx.chat.type !== "private" || !ctx.from || ctx.from.id !== ownerId) { await ctx.reply("🔐 Эта команда доступна только владельцу в личном чате с ботом."); return; }
   const id = Number(ctx.match?.trim());
   if (!Number.isSafeInteger(id) || id <= 0) { await ctx.reply("Использование: <code>/grant TELEGRAM_ID</code>\nОператор должен сначала нажать /start у бота.", { parse_mode: "HTML" }); return; }
   if (id === ownerId) { await ctx.reply("У владельца уже есть полный доступ."); return; }
@@ -178,7 +182,7 @@ bot.command("grant", async ctx => {
   try { await bot.api.sendMessage(id, "🛡 Тебе выданы права оператора YUREXIS RP! Нажми /start, чтобы открыть панель персонала.", { reply_markup: staffMenu() }); } catch {}
 });
 bot.command("revoke", async ctx => {
-  if (ctx.chat.type !== "private" || ctx.from.id !== ownerId) { await ctx.reply("🔐 Эта команда доступна только владельцу в личном чате с ботом."); return; }
+  if (ctx.chat.type !== "private" || !ctx.from || ctx.from.id !== ownerId) { await ctx.reply("🔐 Эта команда доступна только владельцу в личном чате с ботом."); return; }
   const id = Number(ctx.match?.trim());
   if (!Number.isSafeInteger(id) || id <= 0 || id === ownerId) { await ctx.reply("Использование: <code>/revoke TELEGRAM_ID</code>", { parse_mode: "HTML" }); return; }
   await db("staff", "DELETE", `?telegram_id=eq.${id}`, undefined, "return=minimal");
@@ -186,7 +190,13 @@ bot.command("revoke", async ctx => {
   await ctx.reply(`🗑 Права оператора у пользователя <code>${id}</code> отозваны.`, { parse_mode: "HTML" });
   try { await bot.api.sendMessage(id, "ℹ️ Твои права оператора YUREXIS RP были отозваны.", { reply_markup: menu() }); } catch {}
 });
-bot.command("stopreply", async ctx => { if (await isStaff(ctx.from.id)) { await clearSession(ctx.from.id); await ctx.reply("⏹ Режим ответа завершён.", { reply_markup: staffMenu() }); } });
+bot.command("stopreply", async ctx => {
+  if (!ctx.from) return;
+  if (await isStaff(ctx.from.id)) {
+    await clearSession(ctx.from.id);
+    await ctx.reply("⏹ Режим ответа завершён.", { reply_markup: staffMenu() });
+  }
+});
 
 bot.on("message", async ctx => {
   const msg = ctx.message;
@@ -231,3 +241,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try { await bot.handleUpdate(req.body); return res.status(200).send("OK"); }
   catch (error) { console.error("Webhook error", error); return res.status(500).send("Webhook error"); }
     }
+  
