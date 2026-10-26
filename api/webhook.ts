@@ -91,7 +91,7 @@ bot.callbackQuery("about", async ctx => {
 });
 bot.callbackQuery("ticket:create", async ctx => {
   await ctx.answerCallbackQuery();
-  if (ctx.chat?.type !== "private") return;
+  if (ctx.chat?.type !== "private" || !ctx.from) return;
   const existing = await getOpenTicket(ctx.from.id);
   if (existing) {
     await ctx.reply(`📂 У тебя уже есть открытое обращение <b>#${existing.id}</b>. Просто отправь сообщение сюда — оно попадёт оператору.`, { parse_mode: "HTML", reply_markup: menu() });
@@ -109,6 +109,7 @@ bot.callbackQuery("ticket:create", async ctx => {
 });
 bot.callbackQuery("ticket:list", async ctx => {
   await ctx.answerCallbackQuery();
+  if (!ctx.from) return;
   const rows = await db<Ticket[]>("tickets", "GET", `?user_id=eq.${ctx.from.id}&select=*&order=id.desc&limit=10`);
   if (!rows.length) { await ctx.reply("📭 У тебя пока нет обращений.", { reply_markup: menu() }); return; }
   const text = "📂 <b>Твои обращения</b>\n\n" + rows.map(t => `${t.status === "open" ? "🟢" : "🔒"} <b>#${t.id}</b> — ${t.status === "open" ? "Открыто" : "Закрыто"}`).join("\n");
@@ -116,6 +117,7 @@ bot.callbackQuery("ticket:list", async ctx => {
 });
 bot.callbackQuery(/^ticket:cancel:(\d+)$/, async ctx => {
   await ctx.answerCallbackQuery();
+  if (!ctx.from) return;
   const id = Number(ctx.match[1]);
   const ticket = await getTicket(id);
   if (!ticket || ticket.user_id !== ctx.from.id || ticket.status !== "open") { await ctx.reply("Не удалось отменить это обращение."); return; }
@@ -126,6 +128,7 @@ bot.callbackQuery(/^ticket:cancel:(\d+)$/, async ctx => {
 
 bot.callbackQuery("staff:open", async ctx => {
   await ctx.answerCallbackQuery();
+  if (!ctx.from) return;
   if (!(await isStaff(ctx.from.id))) { await ctx.reply("⛔ Нет доступа."); return; }
   const rows = await db<Ticket[]>("tickets", "GET", "?status=eq.open&select=*&order=id.asc&limit=20");
   if (!rows.length) { await ctx.reply("🎉 Открытых заявок пока нет.", { reply_markup: staffMenu() }); return; }
@@ -136,18 +139,21 @@ bot.callbackQuery("staff:open", async ctx => {
 });
 bot.callbackQuery("staff:stats", async ctx => {
   await ctx.answerCallbackQuery();
+  if (!ctx.from) return;
   if (!(await isStaff(ctx.from.id))) { await ctx.reply("⛔ Нет доступа."); return; }
   const rows = await db<Ticket[]>("tickets", "GET", "?select=id,status");
   await ctx.reply(`📊 <b>YUREXIS RP — статистика</b>\n━━━━━━━━━━━━━━\n🎫 Всего обращений: <b>${rows.length}</b>\n🟢 Открыто: <b>${rows.filter(t => t.status === "open").length}</b>\n🔒 Закрыто: <b>${rows.filter(t => t.status === "closed").length}</b>`, { parse_mode: "HTML", reply_markup: staffMenu() });
 });
 bot.callbackQuery("staff:manage", async ctx => {
   await ctx.answerCallbackQuery();
+  if (!ctx.from) return;
   if (ctx.from.id !== ownerId) { await ctx.reply("🔐 Управление персоналом доступно только владельцу."); return; }
   const staff = await staffList();
   await ctx.reply(`⚙️ <b>Управление персоналом</b>\n━━━━━━━━━━━━━━\n${staff.map(s => `• ${esc(s.display_name || "Оператор")} — <code>${s.telegram_id}</code> (${s.role})`).join("\n")}\n\nЧтобы выдать доступ: <code>/grant TELEGRAM_ID</code>\nЧтобы снять доступ: <code>/revoke TELEGRAM_ID</code>\n\nНовый оператор должен сначала нажать /start у бота.`, { parse_mode: "HTML", reply_markup: staffMenu() });
 });
 bot.callbackQuery(/^staff:reply:(\d+)$/, async ctx => {
   await ctx.answerCallbackQuery();
+  if (!ctx.from) return;
   if (!(await isStaff(ctx.from.id))) { await ctx.reply("⛔ Нет доступа к заявкам."); return; }
   const id = Number(ctx.match[1]);
   const ticket = await getTicket(id);
@@ -157,11 +163,14 @@ bot.callbackQuery(/^staff:reply:(\d+)$/, async ctx => {
   await ctx.reply(`💬 <b>Режим ответа включён · заявка #${id}</b>\n\nТеперь отправляй сообщения, фото или документы в этот чат — они будут доставлены пользователю.\n\nКогда закончишь, нажми кнопку ниже.`, { parse_mode: "HTML", reply_markup: new InlineKeyboard().text("⏹ Завершить ответ", "staff:stopreply").text("🔒 Закрыть заявку", `staff:close:${id}`) });
 });
 bot.callbackQuery("staff:stopreply", async ctx => {
-  await ctx.answerCallbackQuery(); await clearSession(ctx.from.id);
+  await ctx.answerCallbackQuery();
+  if (!ctx.from) return;
+  await clearSession(ctx.from.id);
   await ctx.reply("⏹ Режим ответа завершён. Сообщения больше не будут пересылаться пользователю.", { reply_markup: staffMenu() });
 });
 bot.callbackQuery(/^staff:close:(\d+)$/, async ctx => {
   await ctx.answerCallbackQuery();
+  if (!ctx.from) return;
   if (!(await isStaff(ctx.from.id))) { await ctx.reply("⛔ Нет доступа."); return; }
   const id = Number(ctx.match[1]); const ticket = await getTicket(id);
   if (!ticket || ticket.status === "closed") { await ctx.reply("Заявка уже закрыта или не найдена."); return; }
@@ -201,7 +210,7 @@ bot.command("stopreply", async ctx => {
 bot.on("message", async ctx => {
   const msg = ctx.message;
   if (msg.text?.startsWith("/")) return;
-  if (ctx.chat.type !== "private") return;
+  if (ctx.chat.type !== "private" || !ctx.from) return;
   const id = ctx.from.id;
   if (await isStaff(id)) {
     const session = await getSession(id);
@@ -241,4 +250,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try { await bot.handleUpdate(req.body); return res.status(200).send("OK"); }
   catch (error) { console.error("Webhook error", error); return res.status(500).send("Webhook error"); }
     }
-  
+           
