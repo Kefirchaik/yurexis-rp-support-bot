@@ -1,0 +1,18 @@
+{
+  "name": "yurexis-rp-support-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "YUREXIS RP Telegram support bot for Vercel",
+  "scripts": {
+    "dev": "vercel dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "grammy": "^1.36.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "typescript": "^5.7.3",
+    "@vercel/node": "^5.1.14"
+  }
+}
